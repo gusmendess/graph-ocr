@@ -36,6 +36,22 @@ class Settings(BaseSettings):
     iou_slot: float = 0.3  # IoU mínimo para dois textos diferentes ocuparem o mesmo "slot"
     knn_k: int = 4  # vizinhos por nó no grafo de palavras
 
+    # Busca por vetor multimodal (visual + texto + layout)
+    weight_visual: float = 0.4  # pesos iniciais; calibrar com pares reais (original, fraude, outro banco)
+    weight_text: float = 0.4
+    weight_layout: float = 0.2
+    visual_enabled: bool = True
+    visual_auto_download: bool = True  # baixa o ONNX na primeira vez; sem rede, o bloco visual é desativado
+    visual_model_path: Path = Path(".cache/models/dinov2-small.onnx")
+    visual_model_url: str = "https://huggingface.co/onnx-community/dinov2-small/resolve/main/onnx/model.onnx"
+    visual_size: int = 448  # lado do quadrado (letterbox) que entra no DINOv2; múltiplo de 14
+    layout_grid: int = 16
+    index_dir: Path = Path(".cache/index")
+    search_k: int = 5
+
+    def search_weights(self) -> dict[str, float]:
+        return {"visual": self.weight_visual, "text": self.weight_text, "layout": self.weight_layout}
+
     # Alinhamento de grafos (ver AlignmentConfig)
     alignment_model: str = "similarity"  # similarity | affine
     alignment_iterations: int = 2000

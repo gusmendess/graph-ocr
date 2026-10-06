@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.api.adapters.ocr.factory import build_engine  # noqa: E402
+from app.api.infrastructure.output_io import write_output  # noqa: E402
 from app.api.repositories.ocr_cache import OcrCacheRepository  # noqa: E402
 from app.api.services.ocr_export_service import render_ocr_text  # noqa: E402
 from app.api.services.ocr_service import OcrService  # noqa: E402
@@ -50,10 +51,8 @@ def main(argv: list[str] | None = None) -> None:
         print(report.model_dump_json(indent=2))
 
     args.out.mkdir(parents=True, exist_ok=True)
-    target = args.out / f"{args.doc.stem}__analysis.png"
-    target.write_bytes(render_document_report(outcome, args.doc.name))
-    ocr_txt = args.out / f"{args.doc.stem}__ocr.txt"
-    ocr_txt.write_text(render_ocr_text(outcome.words, args.doc.name, report.ocr_engine), encoding="utf-8")
+    target = write_output(args.out / f"{args.doc.stem}__analysis.png", render_document_report(outcome, args.doc.name))
+    ocr_txt = write_output(args.out / f"{args.doc.stem}__ocr.txt", render_ocr_text(outcome.words, args.doc.name, report.ocr_engine))
     print(f"visualização: {target}")
     print(f"ocr (txt): {ocr_txt}")
 

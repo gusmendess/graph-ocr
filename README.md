@@ -57,3 +57,28 @@ Saídas em `outputs/`: `<A>__vs__<B>.png` (originais, OCR com bboxes por status,
 - Print comprimido (WhatsApp) degrada bbox e confiança; use o par com cuidado.
 - Edição limpa (mesma fonte/tamanho) não aparece na geometria; quem pega é a diferença de texto e as regras de consistência.
 - `suspicion` e `geometry_anomaly` são heurísticas, não probabilidades calibradas.
+
+## Busca reversa por vetor multimodal (branch `feat/multimodal-search`)
+
+Acha, entre os documentos indexados, os mais parecidos com uma consulta. O vetor tem três blocos, cada um L2-normalizado:
+
+| Bloco | O que captura | Como |
+|---|---|---|
+| `visual` | aparência (banco, cores, logo, estrutura) | DINOv2-small em ONNX (384-d), imagem inteira com margem branca |
+| `text` | conteúdo, incluindo dígitos | n-gramas de caracteres sobre todo o texto do OCR (2048-d, hash) |
+| `layout` | onde o texto fica na página | grade 16×16 sobre o bbox do conteúdo, fração coberta por texto (256-d); invariante a escala e translação |
+
+O cosseno composto é a média ponderada dos cossenos de cada bloco (`GRAPH_OCR_WEIGHT_*`, iniciais 0.4/0.4/0.2). Os blocos ficam separados no índice, então dá para reponderar ou buscar só por texto/visual sem reindexar. Um bloco ausente (ex.: sem rede para baixar o modelo) é ignorado e os pesos são renormalizados.
+
+```bash
+make index data/samples                      # indexa uma pasta ou imagens
+make search image7.png                       # top-k por cosseno
+make search image7.png COMPARE=1             # + OCR e grafo em cada candidato (cascata de adulteração)
+make search image7.png WEIGHTS=0,1,0         # só texto (visual,texto,layout)
+```
+
+API: `POST /index` (file) e `POST /search?k=5&w_visual=&w_text=&w_layout=` (file).
+
+Posição na cascata: sha256 → busca vetorial top-k → OCR + grafo nos candidatos. **O vetor só recupera candidatos**: original e fraude têm cosseno ~1.0 (nas amostras, 0.994 a 1.000), então quem decide adulteração continua sendo o pareamento por campo. O índice é exato em numpy (serve até dezenas de milhares de documentos); a interface `VectorIndex` permite trocar por FAISS/HNSW/pgvector. `make run` **não** usa a busca: ele compara com a imagem base configurada.
+
+Limites: os pesos não estão calibrados (só há um tipo de comprovante nas amostras, sem outro banco como contraste); o bloco visual não foi validado contra documentos de outros emissores.

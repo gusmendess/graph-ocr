@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.api.adapters.ocr.factory import build_engine  # noqa: E402
 from app.api.repositories.ocr_cache import OcrCacheRepository  # noqa: E402
+from app.api.infrastructure.output_io import write_output  # noqa: E402
 from app.api.services.ocr_export_service import render_ocr_text  # noqa: E402
 from app.api.services.ocr_service import OcrService  # noqa: E402
 from app.api.services.visualization_service import (  # noqa: E402
@@ -54,19 +55,18 @@ def main(argv: list[str] | None = None) -> None:
 
     args.out.mkdir(parents=True, exist_ok=True)
     name = f"{args.doc_a.stem}__vs__{args.doc_b.stem}"
-    (args.out / f"{name}.png").write_bytes(render_comparison(outcome, args.doc_a.stem, args.doc_b.stem))
+    main_png = write_output(args.out / f"{name}.png", render_comparison(outcome, args.doc_a.stem, args.doc_b.stem))
     zoom = render_evidence_zoom(outcome, args.doc_a.stem, args.doc_b.stem)
     if zoom:
-        (args.out / f"{name}__zoom.png").write_bytes(zoom)
+        write_output(args.out / f"{name}__zoom.png", zoom)
     if outcome.words_a is not None:  # o OCR só roda se a cascata chegou na camada 3
         for doc, words in ((args.doc_a, outcome.words_a), (args.doc_b, outcome.words_b)):
-            path = args.out / f"{doc.stem}__ocr.txt"
-            path.write_text(render_ocr_text(words, doc.name, result.ocr_engine), encoding="utf-8")
+            path = write_output(args.out / f"{doc.stem}__ocr.txt", render_ocr_text(words, doc.name, result.ocr_engine))
             print(f"ocr (txt): {path}")
     overlay = render_graph_overlay(outcome, args.doc_a.stem, args.doc_b.stem)
     if overlay:
-        (args.out / f"{name}__graphs.png").write_bytes(overlay)
-    print(f"visualização: {args.out / (name + '.png')}")
+        write_output(args.out / f"{name}__graphs.png", overlay)
+    print(f"visualização: {main_png}")
 
 
 if __name__ == "__main__":

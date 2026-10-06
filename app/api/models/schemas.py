@@ -105,3 +105,27 @@ class CascadeResult(BaseModel):
     doc_a: DocumentAnalysis | None = None
     doc_b: DocumentAnalysis | None = None
     shared_entities: list[SharedEntity] = Field(default_factory=list)
+
+
+class SearchHit(BaseModel):
+    doc_id: str
+    label: str
+    score: float  # cosseno composto (média ponderada dos cossenos de cada bloco)
+    block_scores: dict[str, float]  # cosseno de cada bloco: visual / text / layout
+    is_query: bool = False  # o documento consultado já estava no índice (mesmos bytes)
+
+
+class SearchResponse(BaseModel):
+    exact_match: bool  # sha256 idêntico a um documento indexado
+    blocks_used: list[str]
+    weights_used: dict[str, float]
+    n_indexed: int
+    hits: list[SearchHit]
+
+
+class IndexResponse(BaseModel):
+    doc_id: str
+    label: str
+    replaced: bool
+    n_indexed: int
+    blocks: list[str]
