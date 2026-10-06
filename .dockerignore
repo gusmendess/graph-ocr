@@ -1,5 +1,12 @@
 .venv/
+.git/
+.github/
 .cache/
+.pytest_cache/
+__pycache__/
+*.pyc
 outputs/
 data/
-.git/
+app/tests/
+integration_tests/
+.env

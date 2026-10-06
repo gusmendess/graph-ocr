@@ -1,5 +1,5 @@
 from app.api.domain.entities import Word
-from app.api.services.vector_matching_service import group_lines
+from app.api.services.ocr_lines import group_lines
 
 
 def render_ocr_text(words: list[Word], label: str, engine: str) -> str:

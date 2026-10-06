@@ -57,14 +57,21 @@ class NumpyFlatIndex:
         self.ids = [self.ids[i] for i in keep]
         self.metas = [self.metas[i] for i in keep]
 
-    def search(self, query: DocumentVector, k: int, weights: dict[str, float]) -> list[Hit]:
-        if not self.ids:
-            return []
+    def score_all(
+        self, query: DocumentVector, weights: dict[str, float]
+    ) -> tuple[np.ndarray, dict[str, np.ndarray], dict[str, float]]:
+        """Score composto e por bloco da consulta contra TODOS os documentos, mais os pesos efetivamente usados."""
         shared = {b for b in BLOCKS if b in query.blocks and b in self.matrices}
         used = normalize_weights(weights, shared)
         # cosseno truncado em [0, 1]: o score final fica em 0..1 (cosseno negativo = nenhuma semelhança)
         per_block = {b: np.clip(self.matrices[b] @ query.blocks[b].astype(np.float32), 0.0, 1.0) for b in shared}
-        total = sum(used[b] * per_block[b] for b in used)
+        return sum(used[b] * per_block[b] for b in used), per_block, used
+
+    def search(self, query: DocumentVector, k: int, weights: dict[str, float]) -> list[Hit]:
+        if not self.ids:
+            return []
+        total, per_block, _ = self.score_all(query, weights)
+        shared = set(per_block)
         order = np.argsort(-total)[:k]
         return [
             Hit(self.ids[i], float(total[i]), {b: float(per_block[b][i]) for b in sorted(shared)}, self.metas[i])

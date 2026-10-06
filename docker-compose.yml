@@ -1,0 +1,33 @@
+# API (FastAPI) e, sob demanda, os mesmos scripts da CLI dentro do container.
+#
+#   docker compose up -d api                              # http://localhost:8000/docs
+#   docker compose run --rm cli scripts/index.py          # indexa data/samples/documents
+#   docker compose run --rm cli scripts/search_text.py "green dress" -k 6
+#
+# .cache (modelos baixados na primeira vez, caches de OCR e índices), data (suas imagens) e outputs (figuras)
+# são montados do host: sobrevivem ao container e não entram na imagem.
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  image: graph-ocr
+  environment:
+    GRAPH_OCR_OCR_ENGINE: rapidocr  # o mesmo motor da execução local (o "auto" escolheria o Tesseract, se instalado)
+    GRAPH_OCR_PHASH_THRESHOLD: ${GRAPH_OCR_PHASH_THRESHOLD:-0.3}
+    GRAPH_OCR_SIGLIP_MODEL: ${GRAPH_OCR_SIGLIP_MODEL:-base}
+  volumes:
+    - ./.cache:/srv/.cache
+    - ./data:/srv/data:ro
+    - ./outputs:/srv/outputs
+
+services:
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  cli:
+    <<: *app
+    profiles: ["cli"]  # não sobe com `up`; só com `run`
+    entrypoint: ["uv", "run", "--no-sync", "python"]

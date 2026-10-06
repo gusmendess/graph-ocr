@@ -3,11 +3,12 @@ from functools import lru_cache
 from app.api.adapters.ocr.factory import build_engine
 from app.api.repositories.index_repository import DocumentIndexRepository
 from app.api.repositories.ocr_cache import OcrCacheRepository
-from app.api.services.embedder_factory import build_document_embedder
+from app.api.repositories.semantic_index_repository import SemanticIndexRepository
+from app.api.services.embedder_factory import build_document_embedder, build_siglip_embedder
 from app.api.services.ocr_service import OcrService
 from app.api.settings import get_settings
-from app.api.use_cases.compare_documents import CompareDocumentsUseCase
 from app.api.use_cases.search_documents import SearchDocumentsUseCase
+from app.api.use_cases.search_images import SearchImagesUseCase
 
 
 @lru_cache
@@ -17,8 +18,11 @@ def get_ocr_service() -> OcrService:
 
 
 @lru_cache
-def get_compare_use_case() -> CompareDocumentsUseCase:
-    return CompareDocumentsUseCase(get_settings(), get_ocr_service())
+def get_image_search_use_case() -> SearchImagesUseCase:
+    settings = get_settings()
+    return SearchImagesUseCase(
+        settings, build_siglip_embedder(settings), SemanticIndexRepository(settings.semantic_index_dir)
+    )
 
 
 @lru_cache

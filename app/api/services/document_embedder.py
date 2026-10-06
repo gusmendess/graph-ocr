@@ -4,7 +4,7 @@ from app.api.domain.entities import Word
 from app.api.domain.vectors import DocumentVector
 from app.api.services.embedding_service import Embedder
 from app.api.services.layout_embedder import layout_vector
-from app.api.services.vector_matching_service import group_lines
+from app.api.services.ocr_lines import group_lines
 
 
 class DocumentEmbedder:
