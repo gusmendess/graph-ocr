@@ -19,6 +19,19 @@ class SearchOutcome:
     hits: list[Hit]
 
 
+def rank_references(
+    rows: list[tuple[SearchHit, CascadeResult | None]],
+) -> list[tuple[SearchHit, CascadeResult]]:
+    """Candidatos já comparados, do que melhor explica a consulta ao pior.
+
+    O cosseno do vetor costuma empatar entre variantes do mesmo documento (original e fraudes ~1.0), então
+    o desempate vem do conteúdo: maior fração de palavras casadas no OCR + grafo. A própria consulta
+    (mesmos bytes) não é referência de si mesma e fica de fora.
+    """
+    candidates = [(hit, result) for hit, result in rows if result is not None]
+    return sorted(candidates, key=lambda row: (-row[1].score, -row[0].score))
+
+
 class SearchDocumentsUseCase:
     """Busca reversa por vetor multimodal: acha os documentos indexados mais parecidos com a consulta.
 
@@ -63,6 +76,10 @@ class SearchDocumentsUseCase:
 
     def save(self) -> None:
         self._repository.save(self._index)
+
+    def document_path(self, doc_id: str) -> Path:
+        """Cópia do documento original guardada junto do índice."""
+        return Path(self._index.metas[self._index.ids.index(doc_id)]["path"])
 
     def search(self, data: bytes, k: int | None = None, weights: dict[str, float] | None = None) -> SearchOutcome:
         sha = sha256_bytes(data)

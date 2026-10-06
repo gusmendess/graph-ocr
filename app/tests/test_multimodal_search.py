@@ -191,3 +191,22 @@ def test_different_document_scores_far_below_variants_of_the_same_one():
     index.add("outro", emb.embed(img, _doc(2)))
     hits = {h.doc_id: h.score for h in index.search(emb.embed(img, edited), 2, {"text": 0.5, "layout": 0.5})}
     assert hits["base"] > 0.9 and hits["outro"] < hits["base"] - 0.3
+
+
+def test_rank_references_prefers_content_then_cosine_and_drops_the_query():
+    from types import SimpleNamespace as NS
+
+    from app.api.use_cases.search_documents import rank_references
+
+    def row(label, cosine, content, is_query=False):
+        hit = NS(label=label, score=cosine, is_query=is_query)
+        return hit, None if is_query else NS(score=content)
+
+    rows = [
+        row("a", 0.957, 0.950),
+        row("consulta", 1.000, 0, is_query=True),
+        row("b", 0.956, 0.974),  # cosseno um pouco menor, mas explica melhor o conteúdo
+        row("c", 0.960, 0.974),  # empate no conteúdo: vence o maior cosseno
+    ]
+    assert [hit.label for hit, _ in rank_references(rows)] == ["c", "b", "a"]
+    assert rank_references([row("consulta", 1.0, 0, is_query=True)]) == []

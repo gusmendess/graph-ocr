@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     )
     cache_dir: Path = Path(".cache/ocr")
     base_image: Path = Path("image.png")  # referência usada por `make run <imagem>`
+    index_source: Path = Path("data/samples")  # o que `make run-vector` indexa sozinho se o índice estiver vazio
 
     # Cascata
     phash_threshold: float = 0.7  # abaixo disso o próprio phash decide (documentos diferentes)

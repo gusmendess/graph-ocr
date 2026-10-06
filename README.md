@@ -75,10 +75,15 @@ make index data/samples                      # indexa uma pasta ou imagens
 make search image7.png                       # top-k por cosseno
 make search image7.png COMPARE=1             # + OCR e grafo em cada candidato (cascata de adulteração)
 make search image7.png WEIGHTS=0,1,0         # só texto (visual,texto,layout)
+
+make run-vector image7.png                   # pipeline de vetor completo, com todas as saídas
+make run-vector image7.png K=8 TOP=2 INDEX=data/samples
 ```
+
+`make run-vector` faz: vetor multimodal da imagem → top-k por cosseno → OCR e grafo em cada candidato → a **referência** é o candidato que melhor explica a consulta (maior fração de conteúdo casado, com o cosseno só como desempate, já que original e fraudes empatam) → todas as saídas dessa referência (comparação, zoom, grafos, `.txt` do OCR) mais a análise isolada da consulta. Se o índice estiver vazio, ele indexa `GRAPH_OCR_INDEX_SOURCE` (padrão `data/samples`) sozinho; `INDEX=` reconstrói o índice. `TOP=2` gera as saídas completas das duas melhores referências.
 
 API: `POST /index` (file) e `POST /search?k=5&w_visual=&w_text=&w_layout=` (file).
 
-Posição na cascata: sha256 → busca vetorial top-k → OCR + grafo nos candidatos. **O vetor só recupera candidatos**: original e fraude têm cosseno ~1.0 (nas amostras, 0.994 a 1.000), então quem decide adulteração continua sendo o pareamento por campo. O índice é exato em numpy (serve até dezenas de milhares de documentos); a interface `VectorIndex` permite trocar por FAISS/HNSW/pgvector. `make run` **não** usa a busca: ele compara com a imagem base configurada.
+Posição na cascata: sha256 → busca vetorial top-k → OCR + grafo nos candidatos. **O vetor só recupera candidatos**: original e fraude têm cosseno ~1.0 (nas amostras, 0.994 a 1.000), então quem decide adulteração continua sendo o pareamento por campo. O índice é exato em numpy (serve até dezenas de milhares de documentos); a interface `VectorIndex` permite trocar por FAISS/HNSW/pgvector. `make run` **não** usa a busca: ele compara com a imagem base configurada. Para o pipeline de vetor completo, use `make run-vector`.
 
 Limites: os pesos não estão calibrados (só há um tipo de comprovante nas amostras, sem outro banco como contraste); o bloco visual não foi validado contra documentos de outros emissores.
