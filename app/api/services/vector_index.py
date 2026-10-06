@@ -9,7 +9,7 @@ from app.api.domain.vectors import BLOCKS, DocumentVector, normalize_weights
 @dataclass
 class Hit:
     doc_id: str
-    score: float  # cosseno composto: média ponderada dos cossenos de cada bloco
+    score: float  # similaridade de 0 a 1: média ponderada dos cossenos de cada bloco (cada um truncado em 0)
     block_scores: dict[str, float]
     meta: dict = field(default_factory=dict)
 
@@ -62,7 +62,8 @@ class NumpyFlatIndex:
             return []
         shared = {b for b in BLOCKS if b in query.blocks and b in self.matrices}
         used = normalize_weights(weights, shared)
-        per_block = {b: self.matrices[b] @ query.blocks[b].astype(np.float32) for b in shared}
+        # cosseno truncado em [0, 1]: o score final fica em 0..1 (cosseno negativo = nenhuma semelhança)
+        per_block = {b: np.clip(self.matrices[b] @ query.blocks[b].astype(np.float32), 0.0, 1.0) for b in shared}
         total = sum(used[b] * per_block[b] for b in used)
         order = np.argsort(-total)[:k]
         return [

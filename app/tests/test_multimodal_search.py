@@ -193,20 +193,12 @@ def test_different_document_scores_far_below_variants_of_the_same_one():
     assert hits["base"] > 0.9 and hits["outro"] < hits["base"] - 0.3
 
 
-def test_rank_references_prefers_content_then_cosine_and_drops_the_query():
-    from types import SimpleNamespace as NS
-
-    from app.api.use_cases.search_documents import rank_references
-
-    def row(label, cosine, content, is_query=False):
-        hit = NS(label=label, score=cosine, is_query=is_query)
-        return hit, None if is_query else NS(score=content)
-
-    rows = [
-        row("a", 0.957, 0.950),
-        row("consulta", 1.000, 0, is_query=True),
-        row("b", 0.956, 0.974),  # cosseno um pouco menor, mas explica melhor o conteúdo
-        row("c", 0.960, 0.974),  # empate no conteúdo: vence o maior cosseno
-    ]
-    assert [hit.label for hit, _ in rank_references(rows)] == ["c", "b", "a"]
-    assert rank_references([row("consulta", 1.0, 0, is_query=True)]) == []
+def test_scores_stay_between_0_and_1_even_with_negative_cosines():
+    """Cosseno negativo de um bloco (ex.: visual) vale 0: o score do par nunca sai de [0, 1]."""
+    index = NumpyFlatIndex()
+    index.add("oposto", DocumentVector({"text": np.array([-1, 0], np.float32), "visual": np.array([-1, 0], np.float32)}))
+    index.add("igual", DocumentVector({"text": np.array([1, 0], np.float32), "visual": np.array([1, 0], np.float32)}))
+    q = DocumentVector({"text": np.array([1, 0], np.float32), "visual": np.array([1, 0], np.float32)})
+    hits = {h.doc_id: h for h in index.search(q, 2, {"text": 0.5, "visual": 0.5})}
+    assert hits["oposto"].score == 0.0 and hits["igual"].score == pytest.approx(1.0)
+    assert all(0.0 <= v <= 1.0 for h in hits.values() for v in (h.score, *h.block_scores.values()))

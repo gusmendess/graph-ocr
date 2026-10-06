@@ -3,13 +3,12 @@ from pathlib import Path
 
 from app.api.domain.vectors import DocumentVector, normalize_weights
 from app.api.infrastructure.image_io import decode_image
-from app.api.models.schemas import CascadeResult, IndexResponse, SearchHit, SearchResponse
+from app.api.models.schemas import IndexResponse, SearchHit, SearchResponse
 from app.api.repositories.index_repository import DocumentIndexRepository
 from app.api.services.document_embedder import DocumentEmbedder
 from app.api.services.ocr_service import OcrService
 from app.api.services.vector_index import Hit, NumpyFlatIndex
 from app.api.settings import Settings
-from app.api.use_cases.compare_documents import CompareDocumentsUseCase
 from app.api.utils import sha256_bytes
 
 
@@ -19,25 +18,12 @@ class SearchOutcome:
     hits: list[Hit]
 
 
-def rank_references(
-    rows: list[tuple[SearchHit, CascadeResult | None]],
-) -> list[tuple[SearchHit, CascadeResult]]:
-    """Candidatos já comparados, do que melhor explica a consulta ao pior.
-
-    O cosseno do vetor costuma empatar entre variantes do mesmo documento (original e fraudes ~1.0), então
-    o desempate vem do conteúdo: maior fração de palavras casadas no OCR + grafo. A própria consulta
-    (mesmos bytes) não é referência de si mesma e fica de fora.
-    """
-    candidates = [(hit, result) for hit, result in rows if result is not None]
-    return sorted(candidates, key=lambda row: (-row[1].score, -row[0].score))
-
-
 class SearchDocumentsUseCase:
-    """Busca reversa por vetor multimodal: acha os documentos indexados mais parecidos com a consulta.
+    """Busca reversa por vetor multimodal (visual + texto + layout) e cosseno.
 
-    Posição na cascata: sha256 -> busca vetorial top-k -> OCR + grafo nos k candidatos. O vetor só
-    RECUPERA candidatos (original e fraude têm cosseno altíssimo); o veredito de adulteração continua
-    vindo do pareamento por campo, em `search_and_compare`.
+    Devolve, para cada documento indexado parecido com a consulta, um score de 0 a 1. Só vetor + cosseno:
+    sem pareamento por campo, sem grafo, sem veredito de adulteração. O OCR roda apenas para alimentar
+    os blocos de texto e de layout do vetor.
     """
 
     def __init__(
@@ -77,10 +63,6 @@ class SearchDocumentsUseCase:
     def save(self) -> None:
         self._repository.save(self._index)
 
-    def document_path(self, doc_id: str) -> Path:
-        """Cópia do documento original guardada junto do índice."""
-        return Path(self._index.metas[self._index.ids.index(doc_id)]["path"])
-
     def search(self, data: bytes, k: int | None = None, weights: dict[str, float] | None = None) -> SearchOutcome:
         sha = sha256_bytes(data)
         query = self._vector(data, sha)
@@ -104,17 +86,3 @@ class SearchDocumentsUseCase:
             ],
         )
         return SearchOutcome(response, hits)
-
-    def search_and_compare(
-        self, data: bytes, compare: CompareDocumentsUseCase, k: int | None = None, weights: dict[str, float] | None = None
-    ) -> list[tuple[SearchHit, CascadeResult | None]]:
-        """Busca vetorial + cascata de adulteração (OCR + grafo) em cada candidato (a consulta em si fica de fora)."""
-        outcome = self.search(data, k, weights)
-        results: list[tuple[SearchHit, CascadeResult | None]] = []
-        for hit, raw in zip(outcome.response.hits, outcome.hits):
-            if hit.is_query:
-                results.append((hit, None))
-                continue
-            candidate = Path(raw.meta["path"]).read_bytes()
-            results.append((hit, compare.execute(candidate, data, hit.label, "consulta", run_all=True).result))
-        return results

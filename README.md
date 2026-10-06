@@ -58,9 +58,11 @@ Saídas em `outputs/`: `<A>__vs__<B>.png` (originais, OCR com bboxes por status,
 - Edição limpa (mesma fonte/tamanho) não aparece na geometria; quem pega é a diferença de texto e as regras de consistência.
 - `suspicion` e `geometry_anomaly` são heurísticas, não probabilidades calibradas.
 
-## Busca reversa por vetor multimodal (branch `feat/multimodal-search`)
+## Pipeline vetor + cosseno (branch `feat/multimodal-search`)
 
-Acha, entre os documentos indexados, os mais parecidos com uma consulta. O vetor tem três blocos, cada um L2-normalizado:
+Busca reversa que dá, para cada par (consulta, documento indexado), um **score de 0 a 1** de quão similares são. Só vetor + cosseno: sem pareamento por campo, sem grafo e sem veredito de adulteração. O OCR roda apenas para alimentar os blocos de texto e de layout.
+
+O vetor tem três blocos, cada um L2-normalizado:
 
 | Bloco | O que captura | Como |
 |---|---|---|
@@ -68,22 +70,15 @@ Acha, entre os documentos indexados, os mais parecidos com uma consulta. O vetor
 | `text` | conteúdo, incluindo dígitos | n-gramas de caracteres sobre todo o texto do OCR (2048-d, hash) |
 | `layout` | onde o texto fica na página | grade 16×16 sobre o bbox do conteúdo, fração coberta por texto (256-d); invariante a escala e translação |
 
-O cosseno composto é a média ponderada dos cossenos de cada bloco (`GRAPH_OCR_WEIGHT_*`, iniciais 0.4/0.4/0.2). Os blocos ficam separados no índice, então dá para reponderar ou buscar só por texto/visual sem reindexar. Um bloco ausente (ex.: sem rede para baixar o modelo) é ignorado e os pesos são renormalizados.
+**Score do par** = média ponderada dos cossenos de cada bloco (`GRAPH_OCR_WEIGHT_*`, iniciais 0.4/0.4/0.2), cada cosseno truncado em 0: 0 = nada parecido, 1 = idêntico. Os blocos ficam separados no índice, então dá para reponderar ou buscar só por texto/visual sem reindexar. Um bloco ausente (ex.: sem rede para baixar o modelo) é ignorado e os pesos são renormalizados.
 
 ```bash
-make index data/samples                      # indexa uma pasta ou imagens
-make search image7.png                       # top-k por cosseno
-make search image7.png COMPARE=1             # + OCR e grafo em cada candidato (cascata de adulteração)
-make search image7.png WEIGHTS=0,1,0         # só texto (visual,texto,layout)
-
-make run-vector image7.png                   # pipeline de vetor completo, com todas as saídas
-make run-vector image7.png K=8 TOP=2 INDEX=data/samples
+make run-vector image7.png                       # score 0-1 contra cada documento indexado
+make run-vector image7.png K=8 WEIGHTS=0,1,0     # 8 pares; só texto (visual,texto,layout)
+make run-vector image7.png INDEX=data/samples    # (re)constrói o índice antes de buscar
+make index data/samples                          # só indexa
 ```
 
-`make run-vector` faz: vetor multimodal da imagem → top-k por cosseno → OCR e grafo em cada candidato → a **referência** é o candidato que melhor explica a consulta (maior fração de conteúdo casado, com o cosseno só como desempate, já que original e fraudes empatam) → todas as saídas dessa referência (comparação, zoom, grafos, `.txt` do OCR) mais a análise isolada da consulta. Se o índice estiver vazio, ele indexa `GRAPH_OCR_INDEX_SOURCE` (padrão `data/samples`) sozinho; `INDEX=` reconstrói o índice. `TOP=2` gera as saídas completas das duas melhores referências.
+Se o índice estiver vazio, `make run-vector` indexa `GRAPH_OCR_INDEX_SOURCE` (padrão `data/samples`) sozinho. A saída é a tabela no terminal e `outputs/<imagem>__similarity.json`. API: `POST /index` (file) e `POST /search?k=5&w_visual=&w_text=&w_layout=` (file).
 
-API: `POST /index` (file) e `POST /search?k=5&w_visual=&w_text=&w_layout=` (file).
-
-Posição na cascata: sha256 → busca vetorial top-k → OCR + grafo nos candidatos. **O vetor só recupera candidatos**: original e fraude têm cosseno ~1.0 (nas amostras, 0.994 a 1.000), então quem decide adulteração continua sendo o pareamento por campo. O índice é exato em numpy (serve até dezenas de milhares de documentos); a interface `VectorIndex` permite trocar por FAISS/HNSW/pgvector. `make run` **não** usa a busca: ele compara com a imagem base configurada. Para o pipeline de vetor completo, use `make run-vector`.
-
-Limites: os pesos não estão calibrados (só há um tipo de comprovante nas amostras, sem outro banco como contraste); o bloco visual não foi validado contra documentos de outros emissores.
+**O score mede semelhança, não adulteração.** Original e fraude saem com cosseno altíssimo (nas amostras, 0.994 a 1.000), porque mudam poucos caracteres de um documento inteiro. Os pesos não estão calibrados (só há um tipo de comprovante nas amostras) e o bloco visual não foi validado contra documentos de outros emissores. O índice é exato em numpy (serve até dezenas de milhares de documentos); a interface `VectorIndex` permite trocar por FAISS/HNSW/pgvector. A cascata OCR + grafo (`make run`) continua no repositório, mas fora deste pipeline.
